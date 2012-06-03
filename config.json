@@ -1,0 +1,6 @@
+{ "name" : "feedurl", "value" : "http://www.google.com/reader/public/atom/user%2F02598569399466068304%2Fbundle%2Fwiccatech%20-%20computing" }
+{ "name" : "reddituser", "value" : "prograrticles_bot" }
+{ "name" : "redditsubreddit", "value" : "prograrticles" }
+{ "name" : "redditbaseloginurl", "value" : "https://www.reddit.com/api/login" }
+{ "name" : "redditsubmiturl", "value" : "https://www.reddit.com/api/submit" }
+{ "name" : "redditpassword", "value" : "" }
