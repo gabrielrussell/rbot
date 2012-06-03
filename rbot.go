@@ -20,7 +20,8 @@ type rbot struct {
   reddituser string
   redditpassword string
   redditsubmiturl string
-  redditbasesubmiturl string
+  redditbaseloginurl string
+  redditloginurl string
   redditsubreddit string
   feedurl string
   session *mgo.Session
@@ -82,7 +83,7 @@ func (b rbot) StoreNewEntries( entries []Entry ) {
   }
 }
 
-func ( b rbot ) post ( client *http.Client, url string, postparams url.Values ) ( r *http.Response, err error ) {
+func ( b rbot ) post ( url string, postparams url.Values ) ( r *http.Response, err error ) {
 
   request, err := http.NewRequest( "POST", url, strings.NewReader( postparams.Encode() ) )
   if err != nil { return nil, err }
@@ -90,7 +91,7 @@ func ( b rbot ) post ( client *http.Client, url string, postparams url.Values ) 
   request.Header.Set( "Content-Type", "application/x-www-form-urlencoded" )
   request.Header.Set( "User-Agent", b.useragent )
 
-  response, responseerr := client.Do( request )
+  response, responseerr := b.client.Do( request )
 
   return response, responseerr
 }
@@ -105,13 +106,12 @@ func ( b rbot ) PostOneNewArticle( ) {
 func ( b rbot ) PostArticle( entry Entry ) {
 
   loginresp, err := b.post(
-    b.client,
     b.redditsubmiturl,
     url.Values{
       "api_type":{"json"},
       "user":{b.reddituser},
       "passwd":{b.redditpassword},
-    } )
+  } )
   if err != nil { panic(err) }
 
   body, err := ioutil.ReadAll(loginresp.Body)
@@ -130,10 +130,9 @@ func ( b rbot ) PostArticle( entry Entry ) {
 
   loginresp.Body.Close()
 
-  panic(1)
+  os.Exit(1)
 
   postresp, err := b.post(
-    b.client,
     b.redditsubmiturl,
     url.Values{
       "title":{entry.Title},
@@ -143,6 +142,7 @@ func ( b rbot ) PostArticle( entry Entry ) {
       "uh":{loginreply.Json.Data.Modhash},
   } )
   if err != nil { panic(err) }
+
   body, err = ioutil.ReadAll(postresp.Body)
   if err != nil { panic(err) }
   var postreply map[string]interface{}
@@ -168,7 +168,10 @@ func (cj cjar) Cookies( u *url.URL ) []*http.Cookie {
 func ( b rbot ) config ( name string ) ( value string ) {
   var namevalue struct { Name string; Value string; }
   err := b.configcollection.Find( bson.M{"name": name} ).One( &namevalue )
-  if err != nil { panic(err) }
+  if err != nil {
+    fmt.Printf("%s\nconfig value %s not found\n",err,name);
+    os.Exit(1);
+  }
   return namevalue.Value
 }
 
@@ -185,15 +188,18 @@ func newrbot( servername string, dbname string ) ( b rbot, err error ) {
   b.reddituser = b.config( "reddituser" )
   b.redditpassword = b.config( "redditpassword" )
   b.feedurl = b.config( "feedurl" )
-  b.redditbasesubmiturl = b.config( "redditbasesubmiturl" )
+  b.redditsubmiturl = b.config( "redditsubmiturl" )
+  b.redditbaseloginurl = b.config( "redditbaseloginurl" )
 
-  redditsubmiturl := bytes.NewBufferString( b.config( "" ) );
-  fmt.Fprintf( redditsubmiturl, "%s/%s", b.redditbasesubmiturl, b.reddituser )
-  b.redditsubmiturl = string(redditsubmiturl.Bytes())
+  redditloginurl := bytes.NewBufferString( "" );
+  fmt.Fprintf( redditloginurl, "%s/%s", b.redditbaseloginurl, b.reddituser )
+  b.redditloginurl = string(redditloginurl.Bytes())
 
   useragent := bytes.NewBufferString( "" )
   fmt.Fprintf( useragent, "rbot.go/%s", b.reddituser )
   b.useragent = string(useragent.Bytes())
+
+  b.client = &http.Client{ }
 
   return b, nil
 }
