@@ -106,7 +106,7 @@ func ( b rbot ) PostOneNewArticle( ) {
 func ( b rbot ) PostArticle( entry Entry ) {
 
   loginresp, err := b.post(
-    b.redditsubmiturl,
+    b.redditloginurl,
     url.Values{
       "api_type":{"json"},
       "user":{b.reddituser},
