@@ -16,18 +16,9 @@ import (
 )
 
 type rbot struct {
-  dbname             string
-  useragent          string
-  reddituser         string
-  redditpassword     string
-  redditsubmiturl    string
-  redditbaseloginurl string
-  redditloginurl     string
-  redditsubreddit    string
-  feedurl            string
+  config             map[string]string
   session            *mgo.Session
   articlescollection *mgo.Collection
-  configcollection   *mgo.Collection
   client             *http.Client
 }
 
@@ -57,7 +48,7 @@ type Feed struct {
 
 func (b rbot) FetchAtomFeed() (feed Feed, err error) {
   var r *http.Response
-  r, err = http.Get(b.feedurl)
+  r, err = http.Get(b.config["feedurl"])
   if err != nil {
     return feed, err
   }
@@ -87,7 +78,6 @@ func (b rbot) StoreNewEntries(entries []Entry) {
 }
 
 func (b rbot) post(url string, postparams url.Values) (r *http.Response, err error) {
-
   request, err := http.NewRequest("POST", url, strings.NewReader(postparams.Encode()))
   if err != nil {
     return nil, err
@@ -97,7 +87,7 @@ func (b rbot) post(url string, postparams url.Values) (r *http.Response, err err
     request.AddCookie(cookie)
   }
   request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-  request.Header.Set("User-Agent", b.useragent)
+  request.Header.Set("User-Agent", b.config["useragent"])
 
   response, responseerr := b.client.Do(request)
 
@@ -126,13 +116,12 @@ func (b rbot) PostOneNewArticle() {
 }
 
 func (b rbot) PostArticle(entry Entry) map[string]interface{} {
-
   loginresp, err := b.post(
-    b.redditloginurl,
+    b.config["redditloginurl"],
     url.Values{
       "api_type": {"json"},
-      "user":     {b.reddituser},
-      "passwd":   {b.redditpassword},
+      "user":     {b.config["reddituser"]},
+      "passwd":   {b.config["redditpassword"]},
     },
   )
   if err != nil {
@@ -149,14 +138,14 @@ func (b rbot) PostArticle(entry Entry) map[string]interface{} {
   loginresp.Body.Close()
 
   postresp, err := b.post(
-    b.redditsubmiturl,
+    b.config["redditsubmiturl"],
     url.Values{
       "api_type": {"json"},
       "kind":     {"link"},
       "title":    {html.UnescapeString(entry.Title)},
       "url":      {entry.Link[0].Href},
-      "sr":       {b.redditsubreddit},
-      "r":        {b.redditsubreddit},
+      "sr":       {b.config["redditsubreddit"]},
+      "r":        {b.config["redditsubreddit"]},
       "uh":       {loginreply.Json.Data.Modhash},
     },
   )
@@ -186,45 +175,32 @@ func (cj *cjar) Cookies(u *url.URL) []*http.Cookie {
   return cj.cookies
 }
 
-func (b rbot) config(name string) (value string) {
-  var namevalue struct {
-    Name  string
-    Value string
-  }
-  err := b.configcollection.Find(bson.M{"name": name}).One(&namevalue)
-  if err != nil {
-    fmt.Printf("%s\nconfig value %s not found\n", err, name)
-    os.Exit(1)
-  }
-  return namevalue.Value
-}
-
 func newrbot(servername string, dbname string) (b rbot, err error) {
   b.session, err = mgo.Dial(servername)
   if err != nil {
     return b, err
   }
 
-  b.dbname = dbname
+  b.config = make(map[string]string)
+  configcollection := b.session.DB(dbname).C("config")
+  iter := configcollection.Find(nil).Iter()
+  result := struct {
+    Name  string
+    Value string
+  }{}
+  for iter.Next(&result) {
+    b.config[result.Name] = result.Value
+  }
 
-  b.configcollection = b.session.DB(b.dbname).C("config")
-
-  b.articlescollection = b.session.DB(b.dbname).C("articles")
-
-  b.reddituser = b.config("reddituser")
-  b.redditpassword = b.config("redditpassword")
-  b.feedurl = b.config("feedurl")
-  b.redditsubmiturl = b.config("redditsubmiturl")
-  b.redditbaseloginurl = b.config("redditbaseloginurl")
-  b.redditsubreddit = b.config("redditsubreddit")
+  b.articlescollection = b.session.DB(dbname).C("articles")
 
   redditloginurl := bytes.NewBufferString("")
-  fmt.Fprintf(redditloginurl, "%s/%s", b.redditbaseloginurl, b.reddituser)
-  b.redditloginurl = string(redditloginurl.Bytes())
+  fmt.Fprintf(redditloginurl, "%s/%s", b.config["redditbaseloginurl"], b.config["reddituser"])
+  b.config["redditloginurl"] = string(redditloginurl.Bytes())
 
   useragent := bytes.NewBufferString("")
-  fmt.Fprintf(useragent, "rbot.go/%s", b.reddituser)
-  b.useragent = string(useragent.Bytes())
+  fmt.Fprintf(useragent, "rbot.go/%s", b.config["reddituser"])
+  b.config["useragent"] = string(useragent.Bytes())
 
   b.client = &http.Client{
     Jar: &cjar{},
