@@ -5,6 +5,7 @@ import (
   "encoding/json"
   "encoding/xml"
   "fmt"
+  "html"
   "io/ioutil"
   "launchpad.net/mgo"
   "launchpad.net/mgo/bson"
@@ -152,7 +153,7 @@ func (b rbot) PostArticle(entry Entry) map[string]interface{} {
     url.Values{
       "api_type": {"json"},
       "kind":     {"link"},
-      "title":    {entry.Title},
+      "title":    {html.UnescapeString(entry.Title)},
       "url":      {entry.Link[0].Href},
       "sr":       {b.redditsubreddit},
       "r":        {b.redditsubreddit},
