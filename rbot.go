@@ -233,10 +233,6 @@ func newrbot(servername string, dbname string) (b rbot, err error) {
   return b, nil
 }
 
-func (b rbot) destroy() {
-  b.session.Close()
-}
-
 func main() {
   if len(os.Args) < 3 {
     fmt.Printf("usage: %s <mongodb-server> <db-name>", os.Args[0])
@@ -244,9 +240,9 @@ func main() {
   }
 
   b, err := newrbot(os.Args[1], os.Args[2])
-  defer b.destroy()
 
   feed, err := b.FetchAtomFeed()
+
   if err != nil {
     panic(err)
   }
@@ -254,5 +250,4 @@ func main() {
   b.StoreNewEntries(feed.Entries)
 
   b.PostOneNewArticle()
-
 }
