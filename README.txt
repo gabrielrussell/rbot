@@ -11,3 +11,7 @@ Edit the config.json file and add the values from feedurl, reddituser, redditsub
 Then you can run the rbot with:
 
   rbot <mongo-server> <db-name>
+
+It will grab all of the articles from the feed, but it will only post one of them every time you run rbot.
+
+Then you can run it under cron in a loop to look for new articles and post one new article every five minutes, for example.
