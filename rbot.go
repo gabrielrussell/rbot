@@ -40,6 +40,9 @@ type Entry struct {
   } `xml:"link"`
   Title string `xml:"title"`
   Id    string `xml:"id"`
+  Source struct {
+    Title string `xml:"title"`
+  } `xml:"source"`
   State string
 }
 
