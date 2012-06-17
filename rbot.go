@@ -238,7 +238,7 @@ func main() {
     panic(err)
   }
 
-  freq, err := strconv.ParseInt(b.config["frequency"],0)
+  freq, err := strconv.ParseInt(b.config["frequency"],10,0)
   if err != nil {
     panic(err)
   }
