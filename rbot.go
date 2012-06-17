@@ -137,13 +137,23 @@ func (b rbot) PostArticle(entry Entry) map[string]interface{} {
   json.Unmarshal(body, &loginreply)
   loginresp.Body.Close()
 
+  var href string = ""
+  for _, link := range entry.Link {
+    if link.Rel == "canonical" {
+      href = link.Href;
+    }
+    if link.Rel == "alternate" && href == "" {
+      href = link.Href;
+    }
+  }
+
   postresp, err := b.post(
     b.config["redditsubmiturl"],
     url.Values{
       "api_type": {"json"},
       "kind":     {"link"},
       "title":    {html.UnescapeString(entry.Title)},
-      "url":      {entry.Link[0].Href},
+      "url":      {href},
       "sr":       {b.config["redditsubreddit"]},
       "r":        {b.config["redditsubreddit"]},
       "uh":       {loginreply.Json.Data.Modhash},
