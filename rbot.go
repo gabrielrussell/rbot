@@ -12,6 +12,7 @@ import (
   "net/http"
   "net/url"
   "os"
+  "strconv"
   "strings"
 )
 
@@ -227,13 +228,26 @@ func main() {
 
   b, err := newrbot(os.Args[1], os.Args[2])
 
-  feed, err := b.FetchAtomFeed()
+  freq, err := strconv.ParseInt(b.config["frequency"],0)
 
-  if err != nil {
-    panic(err)
+  if freq < 1 {
+    freq = 60
+    fmt.Printf("falling back to a frequency of %d seconds\n",freq)
   }
 
-  b.StoreNewEntries(feed.Entries)
+  for {
 
-  b.PostOneNewArticle()
+    feed, err := b.FetchAtomFeed()
+
+    if err != nil {
+      panic(err)
+    }
+
+    b.StoreNewEntries(feed.Entries)
+
+    b.PostOneNewArticle()
+
+    time.Sleep( freq * time.Second )
+
+  }
 }

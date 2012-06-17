@@ -4,3 +4,4 @@
 { "name" : "redditbaseloginurl", "value" : "http://www.reddit.com/api/login" }
 { "name" : "redditsubmiturl", "value" : "http://www.reddit.com/api/submit" }
 { "name" : "redditpassword", "value" : "" }
+{ "name" : "frequency", "value" : "60" }
