@@ -9,11 +9,13 @@ import (
   "io/ioutil"
   "launchpad.net/mgo"
   "launchpad.net/mgo/bson"
+  "log"
   "net/http"
   "net/url"
   "os"
   "strconv"
   "strings"
+  "time"
 )
 
 type rbot struct {
@@ -21,6 +23,7 @@ type rbot struct {
   session            *mgo.Session
   articlescollection *mgo.Collection
   client             *http.Client
+  logger             *log.Logger
 }
 
 type LoginReply struct {
@@ -63,7 +66,7 @@ func (b rbot) FetchAtomFeed() (feed Feed, err error) {
   return feed, nil
 }
 
-func (b rbot) StoreNewEntries(entries []Entry) {
+func (b rbot) StoreNewEntries(entries []Entry) (newarticles int) {
   var err error
   for i := 0; i < len(entries); i++ {
     entries[i].State = "pending"
@@ -193,13 +196,16 @@ func (cj *cjar) Cookies(u *url.URL) []*http.Cookie {
   return cj.cookies
 }
 
-func newrbot(servername string, dbname string) (b rbot, err error) {
+func newrbot(servername string, dbname string, logger *log.Logger) (b rbot, err error) {
   b.session, err = mgo.Dial(servername)
   if err != nil {
     return b, err
   }
 
   b.config = make(map[string]string)
+
+  b.logger = logger
+
   configcollection := b.session.DB(dbname).C("config")
   iter := configcollection.Find(nil).Iter()
   result := struct {
@@ -208,6 +214,9 @@ func newrbot(servername string, dbname string) (b rbot, err error) {
   }{}
   for iter.Next(&result) {
     b.config[result.Name] = result.Value
+    if result.Name != "redditpassword" {
+      b.logger.Printf("%s -> %s\n",result.Name,result.Value);
+    }
   }
 
   b.articlescollection = b.session.DB(dbname).C("articles")
@@ -228,12 +237,14 @@ func newrbot(servername string, dbname string) (b rbot, err error) {
 }
 
 func main() {
+  logger := log.New( os.Stderr,"rbot",log.LstdFlags );
+
   if len(os.Args) < 3 {
-    fmt.Printf("usage: %s <mongodb-server> <db-name>", os.Args[0])
+    logger.Printf("usage: %s <mongodb-server> <db-name>", os.Args[0])
     os.Exit(1)
   }
 
-  b, err := newrbot(os.Args[1], os.Args[2])
+  b, err := newrbot(os.Args[1], os.Args[2], logger)
   if err != nil {
     panic(err)
   }
@@ -245,7 +256,9 @@ func main() {
 
   if freq < 1 {
     freq = 60
-    fmt.Printf("falling back to a frequency of %d seconds\n",freq)
+    b.logger.Printf("using a default value of %d seconds for the frequency\n",freq)
+  } else {
+    b.logger.Printf("using a value of %d seconds for the frequency\n",freq)
   }
 
   for {
@@ -260,6 +273,7 @@ func main() {
 
     postedcount, queuedcount := b.PostOneNewArticle()
 
+    b.logger.Printf("new: %d, posted: %d, queued: %d\n", newarticlecount, postedcount, queuedcount );
     time.Sleep( time.Duration(freq) * time.Second )
   }
 
