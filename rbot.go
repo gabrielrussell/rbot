@@ -77,8 +77,10 @@ func (b rbot) StoreNewEntries(entries []Entry) {
       if err != nil {
         panic(err)
       }
+      newarticles ++
     }
   }
+  return newarticles
 }
 
 func (b rbot) post(url string, postparams url.Values) (r *http.Response, err error) {
@@ -102,21 +104,23 @@ func (b rbot) post(url string, postparams url.Values) (r *http.Response, err err
   return response, responseerr
 }
 
-func (b rbot) PostOneNewArticle() {
+func (b rbot) PostOneNewArticle() ( posted, queued int ) {
   query := b.articlescollection.Find(bson.M{"state": "pending"})
-  count, err := query.Count()
+  queued, err := query.Count()
   if err != nil {
     panic(err)
   }
-  if count > 0 {
+  if queued > 0 {
     var a Entry
     err := query.One(&a)
     if err != nil {
       panic(err)
     }
+    posted = 1
     result := b.PostArticle(a)
     b.articlescollection.Update(bson.M{"id": a.Id}, bson.M{"$set": bson.M{"result": result, "state": "attempted"}})
   }
+  return posted, queued
 }
 
 func (b rbot) PostArticle(entry Entry) map[string]interface{} {
@@ -230,8 +234,14 @@ func main() {
   }
 
   b, err := newrbot(os.Args[1], os.Args[2])
+  if err != nil {
+    panic(err)
+  }
 
   freq, err := strconv.ParseInt(b.config["frequency"],0)
+  if err != nil {
+    panic(err)
+  }
 
   if freq < 1 {
     freq = 60
@@ -246,11 +256,11 @@ func main() {
       panic(err)
     }
 
-    b.StoreNewEntries(feed.Entries)
+    newarticlecount := b.StoreNewEntries(feed.Entries)
 
-    b.PostOneNewArticle()
+    postedcount, queuedcount := b.PostOneNewArticle()
 
-    time.Sleep( freq * time.Second )
-
+    time.Sleep( time.Duration(freq) * time.Second )
   }
+
 }
