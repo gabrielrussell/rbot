@@ -59,6 +59,7 @@ func (b rbot) FetchAtomFeed() (feed Feed, err error) {
   if err != nil {
     return feed, err
   }
+  defer r.Body.Close()
   if r.StatusCode == http.StatusOK {
     decoder := xml.NewDecoder(r.Body)
     decoder.Decode(&feed)
@@ -91,6 +92,7 @@ func (b rbot) post(url string, postparams url.Values) (r *http.Response, err err
   if err != nil {
     return nil, err
   }
+  defer request.Body.Close()
 
   for _, cookie := range b.client.Jar.Cookies(request.URL) {
     request.AddCookie(cookie)
