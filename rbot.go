@@ -67,24 +67,23 @@ func (b rbot) FetchAtomFeed() (feed Feed, err error) {
   return feed, nil
 }
 
-func (b rbot) StoreNewEntries(entries []Entry) (newarticles int) {
-  var err error
+func (b rbot) StoreNewEntries(entries []Entry) (newarticles int, err error) {
   for i := 0; i < len(entries); i++ {
     entries[i].State = "pending"
     var c int
     c, err = b.articlescollection.Find(bson.M{"id": entries[i].Id}).Count()
     if err != nil {
-      panic(err)
+      return 0, nil
     }
     if c == 0 {
       err = b.articlescollection.Insert(entries[i])
       if err != nil {
-        panic(err)
+        return 0, err
       }
       newarticles ++
     }
   }
-  return newarticles
+  return newarticles, nil
 }
 
 func (b rbot) post(url string, postparams url.Values) (r *http.Response, err error) {
@@ -109,26 +108,29 @@ func (b rbot) post(url string, postparams url.Values) (r *http.Response, err err
   return response, responseerr
 }
 
-func (b rbot) PostOneNewArticle() ( posted, queued int ) {
+func (b rbot) PostOneNewArticle() ( posted, queued int, err error ) {
   query := b.articlescollection.Find(bson.M{"state": "pending"})
-  queued, err := query.Count()
+  queued, err = query.Count()
   if err != nil {
-    panic(err)
+    return 0, 0, err
   }
   if queued > 0 {
     var a Entry
     err := query.One(&a)
     if err != nil {
-      panic(err)
+      return queued, 0, err
+    }
+    result, err := b.PostArticle(a)
+    if err != nil {
+      return queued, 0, err
     }
     posted = 1
-    result := b.PostArticle(a)
     b.articlescollection.Update(bson.M{"id": a.Id}, bson.M{"$set": bson.M{"result": result, "state": "attempted"}})
   }
-  return posted, queued
+  return posted, queued, nil
 }
 
-func (b rbot) PostArticle(entry Entry) map[string]interface{} {
+func (b rbot) PostArticle(entry Entry) ( postreply map[string]interface{}, err error ) {
   loginresp, err := b.post(
     b.config["redditloginurl"],
     url.Values{
@@ -138,12 +140,12 @@ func (b rbot) PostArticle(entry Entry) map[string]interface{} {
     },
   )
   if err != nil {
-    panic(err)
+    return nil, err
   }
 
   body, err := ioutil.ReadAll(loginresp.Body)
   if err != nil {
-    panic(err)
+    return nil, err
   }
 
   var loginreply *LoginReply
@@ -173,17 +175,16 @@ func (b rbot) PostArticle(entry Entry) map[string]interface{} {
     },
   )
   if err != nil {
-    panic(err)
+    return nil, err
   }
 
   body, err = ioutil.ReadAll(postresp.Body)
   if err != nil {
-    panic(err)
+    return nil, err
   }
-  var postreply map[string]interface{}
   json.Unmarshal(body, &postreply)
   postresp.Body.Close()
-  return postreply
+  return postreply, nil
 }
 
 type cjar struct {
@@ -236,47 +237,78 @@ func newrbot(session * mgo.Session, dbname string, logger *log.Logger) (b rbot) 
 }
 
 func main() {
-  logger := log.New( os.Stderr,"rbot",log.LstdFlags );
+  logger := log.New( os.Stderr,"rbot ",log.LstdFlags );
 
   if len(os.Args) < 3 {
     logger.Printf("usage: %s <mongodb-server> <db-name>", os.Args[0])
     os.Exit(1)
   }
 
+  for {
+    logger.Printf("launching bot\n");
+    err := bot(logger, os.Args[1], os.Args[2]);
+    logger.Printf("bot failed: %s\n",err);
+    time.Sleep( 300 * time.Second )
+  }
+}
+
+
+func bot ( logger * log.Logger, dbserver, dbname string) (err error ) {
+
   session, err := mgo.Dial(os.Args[1])
   if err != nil {
     logger.Printf("error: can't connect to mongodb server @ %s",os.Args[1])
-    os.Exit(1)
+    return err;
   }
 
   b := newrbot(session, os.Args[2], logger)
 
   freq, err := strconv.ParseInt(b.config["frequency"],10,0)
   if err != nil {
-    panic(err)
+    logger.Printf("error: can't parse frequency from the config db\n")
+    return(err)
   }
 
   if freq < 1 {
     freq = 60
-    b.logger.Printf("using a default value of %d seconds for the frequency\n",freq)
+    b.logger.Printf("using a default value of %d seconds for the frequency\n",
+      freq)
   } else {
-    b.logger.Printf("using a value of %d seconds for the frequency\n",freq)
+    b.logger.Printf("using a value of %d seconds for the frequency\n",
+      freq)
   }
 
   for {
 
     feed, err := b.FetchAtomFeed()
 
-    if err != nil {
-      panic(err)
+    if err == nil {
+
+      newarticlecount, err := b.StoreNewEntries(feed.Entries)
+      if err != nil {
+        b.logger.Printf("failed to StoreNewEntries (%s)\n", err)
+        return err
+      }
+
+      postedcount, queuedcount, err := b.PostOneNewArticle()
+
+      if err != nil {
+        b.logger.Printf("failed to PostOneNewArticle (%s)\n", err)
+        return err
+      }
+
+      b.logger.Printf("new: %d, posted: %d, queued: %d\n",
+                      newarticlecount, postedcount, queuedcount );
+
+    } else {
+
+      b.logger.Printf("error fetching atom feed (%s)\n",err)
+
     }
 
-    newarticlecount := b.StoreNewEntries(feed.Entries)
-
-    postedcount, queuedcount := b.PostOneNewArticle()
-
-    b.logger.Printf("new: %d, posted: %d, queued: %d\n", newarticlecount, postedcount, queuedcount );
     time.Sleep( time.Duration(freq) * time.Second )
+
   }
+  return nil
 
 }
