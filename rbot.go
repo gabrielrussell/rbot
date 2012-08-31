@@ -198,12 +198,9 @@ func (cj *cjar) Cookies(u *url.URL) []*http.Cookie {
   return cj.cookies
 }
 
-func newrbot(servername string, dbname string, logger *log.Logger) (b rbot, err error) {
-  b.session, err = mgo.Dial(servername)
-  if err != nil {
-    return b, err
-  }
+func newrbot(session * mgo.Session, dbname string, logger *log.Logger) (b rbot) {
 
+  b.session = session
   b.config = make(map[string]string)
 
   b.logger = logger
@@ -235,7 +232,7 @@ func newrbot(servername string, dbname string, logger *log.Logger) (b rbot, err 
     Jar: &cjar{},
   }
 
-  return b, nil
+  return b
 }
 
 func main() {
@@ -246,10 +243,13 @@ func main() {
     os.Exit(1)
   }
 
-  b, err := newrbot(os.Args[1], os.Args[2], logger)
+  session, err := mgo.Dial(os.Args[1])
   if err != nil {
-    panic(err)
+    logger.Printf("error: can't connect to mongodb server @ %s",os.Args[1])
+    os.Exit(1)
   }
+
+  b := newrbot(session, os.Args[2], logger)
 
   freq, err := strconv.ParseInt(b.config["frequency"],10,0)
   if err != nil {
